@@ -1,6 +1,6 @@
 import logging
 import os
-import sys
+import shutil
 
 import pinecone
 from dotenv import load_dotenv
@@ -29,14 +29,28 @@ def initialize_vectorstore():
 
 
 if __name__ == "__main__":
-    file_path = sys.argv[1]
-    loader = UnstructuredPDFLoader(file_path)
-    raw_docs = loader.load()
-    logger.info("Loaded %d documents", len(raw_docs))
+    folder_path = "inputs"
 
-    text_splitter = CharacterTextSplitter(chunk_size=300, chunk_overlap=30)
-    docs = text_splitter.split_documents(raw_docs)
-    logger.info("Split %d documents", len(docs))
+    file_list = os.listdir(folder_path)
 
-    vectorstore = initialize_vectorstore()
-    vectorstore.add_documents(docs)
+    pdf_files = []
+    for file_name in file_list:
+        pdf_files.append(os.path.join(folder_path, file_name))
+
+    for file_path in pdf_files:
+        logger.info(f"Load: {file_path}")
+        try:
+            loader = UnstructuredPDFLoader(file_path)
+            raw_docs = loader.load()
+
+            text_splitter = CharacterTextSplitter(chunk_size=300, chunk_overlap=30)
+            docs = text_splitter.split_documents(raw_docs)
+            logger.info(f"Split {len(docs)} documents")
+
+            vectorstore = initialize_vectorstore()
+            vectorstore.add_documents(docs)
+
+            shutil.move(file_path, "done")
+        except:
+            logger.info(f"Load failed: {file_path}")
+            shutil.move(file_path, "failed")
