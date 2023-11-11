@@ -13,6 +13,7 @@ from langchain.chains import ConversationalRetrievalChain
 from langchain.chat_models import ChatOpenAI
 from langchain.memory import (ConversationBufferMemory,
                               MomentoChatMessageHistory)
+from langchain.prompts import PromptTemplate
 from langchain.schema import LLMResult
 from slack_bolt import App
 from slack_bolt.adapter.aws_lambda import SlackRequestHandler
@@ -95,6 +96,22 @@ def handle_mention(event, say):
     result = say("\n\nTyping...", thread_ts=thread_ts)
     ts = result["ts"]
 
+    template = """You will educate users about accounting audit practices based on standards like the Financial Instruments and Exchange Act and practical guidelines.
+    And you are designed to engage in a friendly manner by adding the suffix 'Uho' to the end of its sentences, which adds a playful gorilla-themed touch to its expert advice. 
+    Follow exactly these 3 steps:
+    1. Read the context below
+    2. Answer the question using only the context information
+    3. Always speak in Japanese.
+
+    Context : {context}
+    User Question: {question}
+
+    If you don't know the answer, just say you don't know. Do NOT try to make up an answer.
+    If the question is not related to the context, politely respond that you are tuned to only answer questions that are related to the context.
+    Use as much detail as possible when responding."""
+
+    prompt = PromptTemplate(input_variables=["question", "context"], template=template)
+
     history = MomentoChatMessageHistory.from_client_params(
         id_ts,
         os.environ["MOMENTO_CACHE"],
@@ -107,12 +124,14 @@ def handle_mention(event, say):
     vectorstore = initialize_vectorstore()
 
     callback = SlackStreamingCallbackHandler(channel=channel, ts=ts)
+
     llm = ChatOpenAI(
         model_name=os.environ["OPENAI_API_MODEL"],
         temperature=os.environ["OPENAI_API_TEMPERATURE"],
         streaming=True,
         callbacks=[callback],
     )
+
     condense_question_llm = ChatOpenAI(
         model_name=os.environ["OPENAI_API_MODEL"],
         temperature=os.environ["OPENAI_API_TEMPERATURE"],
@@ -123,6 +142,7 @@ def handle_mention(event, say):
         retriever=vectorstore.as_retriever(),
         memory=memory,
         condense_question_llm=condense_question_llm,
+        combine_docs_chain_kwargs={"prompt": prompt},
     )
 
     qa_chain.run(message)
